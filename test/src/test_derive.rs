@@ -1,4 +1,5 @@
-use std::cell::Cell;
+use std::cell::{self, Cell, RefCell};
+use std::rc::Rc;
 
 use gdnative::export::Property;
 use gdnative::prelude::*;
@@ -325,17 +326,19 @@ fn test_derive_nativeclass_godot_attr_on_base_parameter() -> bool {
 
 #[derive(NativeClass)]
 #[inherit(Reference)]
-struct GodotAttrOnMacroParameters(i64);
+struct GodotAttrOnMacroParameters(Rc<RefCell<Vec<i64>>>);
 
 #[methods]
 impl GodotAttrOnMacroParameters {
     fn new(_owner: &Reference) -> Self {
-        Self(54)
+        let vec = Vec::from([12, 34]);
+        let rc_ref = Rc::new(RefCell::new(vec));
+        Self(rc_ref)
     }
 
     #[godot(rpc = "disabled", name = "ask", deref_return)]
-    fn answer(&self, #[base] _base: &Reference) -> &i64 {
-        &self.0
+    fn answer(&self, #[base] _base: &Reference) -> cell::Ref<Vec<i64>> {
+        self.0.borrow()
     }
 }
 
@@ -345,7 +348,9 @@ fn test_derive_nativeclass_godot_attr_on_macro_parameters() -> bool {
     let ok = std::panic::catch_unwind(|| {
         let thing = Instance::<GodotAttrOnMacroParameters, _>::new();
         let base = thing.into_base();
-        assert_eq!(unsafe { base.call("ask", &[]).to::<i64>() }, Some(54));
+
+        let res = unsafe { base.call("ask", &[]).to::<Vec<i64>>() };
+        assert_eq!(res, Some([12, 34].into()));
     })
     .is_ok();
 
@@ -358,17 +363,19 @@ fn test_derive_nativeclass_godot_attr_on_macro_parameters() -> bool {
 
 #[derive(NativeClass)]
 #[inherit(Reference)]
-struct DerefReturn(i64);
+struct DerefReturn(Rc<RefCell<Vec<i64>>>);
 
 #[methods]
 impl DerefReturn {
     fn new(_owner: &Reference) -> Self {
-        Self(54)
+        let vec = Vec::from([12, 34]);
+        let rc_ref = Rc::new(RefCell::new(vec));
+        Self(rc_ref)
     }
 
     #[export(deref_return)]
-    fn answer(&self, _owner: &Reference) -> &i64 {
-        &self.0
+    fn answer(&self, _owner: &Reference) -> cell::Ref<Vec<i64>> {
+        self.0.borrow()
     }
 }
 
@@ -378,7 +385,9 @@ fn test_derive_nativeclass_deref_return() -> bool {
     let ok = std::panic::catch_unwind(|| {
         let thing = Instance::<DerefReturn, _>::new();
         let base = thing.into_base();
-        assert_eq!(unsafe { base.call("answer", &[]).to::<i64>() }, Some(54));
+
+        let res = unsafe { base.call("answer", &[]).to::<Vec<i64>>() };
+        assert_eq!(res, Some([12, 34].into()));
     })
     .is_ok();
 
