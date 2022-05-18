@@ -1,4 +1,5 @@
-use std::cell::Cell;
+use std::cell::{self, Cell, RefCell};
+use std::rc::Rc;
 
 use gdnative::export::Property;
 use gdnative::prelude::*;
@@ -8,6 +9,13 @@ pub(crate) fn run_tests() -> bool {
 
     status &= test_derive_to_variant();
     status &= test_derive_owned_to_variant();
+    status &= test_derive_nativeclass();
+    status &= test_derive_nativeclass_without_inherit();
+    status &= test_derive_nativeclass_without_base_parameter();
+    status &= test_derive_nativeclass_godot_attr_on_base_parameter();
+    status &= test_derive_nativeclass_godot_attr_on_macro_parameters();
+    status &= test_derive_nativeclass_deref_return();
+    status &= test_derive_nativeclass_rename_method();
     status &= test_derive_nativeclass_without_constructor();
     status &= test_derive_nativeclass_with_property_get_set();
     status &= test_derive_nativeclass_property_with_only_getter();
@@ -16,6 +24,13 @@ pub(crate) fn run_tests() -> bool {
 }
 
 pub(crate) fn register(handle: InitHandle) {
+    handle.add_class::<MinimalDerive>();
+    handle.add_class::<WithoutInherit>();
+    handle.add_class::<WithoutBaseParameter>();
+    handle.add_class::<GodotAttrOnBaseParameter>();
+    handle.add_class::<GodotAttrOnMacroParameters>();
+    handle.add_class::<DerefReturn>();
+    handle.add_class::<RenameMethod>();
     handle.add_class::<EmplacementOnly>();
     handle.add_class::<CustomGetSet>();
     handle.add_class::<MyVec>();
@@ -173,6 +188,244 @@ fn test_derive_owned_to_variant() -> bool {
 
     if !ok {
         godot_error!("   !! Test test_derive_owned_to_variant failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct MinimalDerive(i64);
+
+#[methods]
+impl MinimalDerive {
+    fn new(_owner: &Reference) -> Self {
+        Self(54)
+    }
+
+    #[export]
+    fn answer(&self, _owner: &Reference) -> i64 {
+        self.0
+    }
+}
+
+fn test_derive_nativeclass() -> bool {
+    println!(" -- test_derive_nativeclass");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<MinimalDerive, _>::new();
+        let base: Ref<Reference, Unique> = thing.into_base();
+        assert_eq!(unsafe { base.call("answer", &[]).to::<i64>() }, Some(54));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+struct WithoutInherit(i64);
+
+#[methods]
+impl WithoutInherit {
+    fn new(_owner: &Reference) -> Self {
+        Self(54)
+    }
+
+    #[export]
+    fn answer(&self, _owner: &Reference) -> i64 {
+        self.0
+    }
+}
+
+fn test_derive_nativeclass_without_inherit() -> bool {
+    println!(" -- test_derive_nativeclass_without_inherit");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<WithoutInherit, _>::new();
+        let base = thing.into_base();
+        assert_eq!(unsafe { base.call("answer", &[]).to::<i64>() }, Some(54));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_without_inherit failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct WithoutBaseParameter(i64);
+
+#[methods]
+impl WithoutBaseParameter {
+    fn new(_owner: &Reference) -> Self {
+        Self(54)
+    }
+
+    #[godot]
+    fn answer(&self) -> i64 {
+        self.0
+    }
+}
+
+fn test_derive_nativeclass_without_base_parameter() -> bool {
+    println!(" -- test_derive_nativeclass_without_base_parameter");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<WithoutBaseParameter, _>::new();
+        let base = thing.into_base();
+        assert_eq!(unsafe { base.call("answer", &[]).to::<i64>() }, Some(54));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_without_base_parameter failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct GodotAttrOnBaseParameter(i64);
+
+#[methods]
+impl GodotAttrOnBaseParameter {
+    fn new(_owner: &Reference) -> Self {
+        Self(54)
+    }
+
+    #[godot]
+    fn answer(&self, #[base] _base: &Reference) -> i64 {
+        self.0
+    }
+}
+
+fn test_derive_nativeclass_godot_attr_on_base_parameter() -> bool {
+    println!(" -- test_derive_nativeclass_godot_attr_on_base_parameter");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<GodotAttrOnBaseParameter, _>::new();
+        let base = thing.into_base();
+        assert_eq!(unsafe { base.call("answer", &[]).to::<i64>() }, Some(54));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_godot_attr_on_base_parameter failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct GodotAttrOnMacroParameters(Rc<RefCell<Vec<i64>>>);
+
+#[methods]
+impl GodotAttrOnMacroParameters {
+    fn new(_owner: &Reference) -> Self {
+        let vec = Vec::from([12, 34]);
+        let rc_ref = Rc::new(RefCell::new(vec));
+        Self(rc_ref)
+    }
+
+    #[godot(rpc = "disabled", name = "ask", deref_return)]
+    fn answer(&self, #[base] _base: &Reference) -> cell::Ref<Vec<i64>> {
+        self.0.borrow()
+    }
+}
+
+fn test_derive_nativeclass_godot_attr_on_macro_parameters() -> bool {
+    println!(" -- test_derive_nativeclass_godot_attr_on_macro_parameters");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<GodotAttrOnMacroParameters, _>::new();
+        let base = thing.into_base();
+
+        let res = unsafe { base.call("ask", &[]).to::<Vec<i64>>() };
+        assert_eq!(res, Some([12, 34].into()));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_godot_attr_on_macro_parameters failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct DerefReturn(Rc<RefCell<Vec<i64>>>);
+
+#[methods]
+impl DerefReturn {
+    fn new(_owner: &Reference) -> Self {
+        let vec = Vec::from([12, 34]);
+        let rc_ref = Rc::new(RefCell::new(vec));
+        Self(rc_ref)
+    }
+
+    #[export(deref_return)]
+    fn answer(&self, _owner: &Reference) -> cell::Ref<Vec<i64>> {
+        self.0.borrow()
+    }
+}
+
+fn test_derive_nativeclass_deref_return() -> bool {
+    println!(" -- test_derive_nativeclass_deref_return");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<DerefReturn, _>::new();
+        let base = thing.into_base();
+
+        let res = unsafe { base.call("answer", &[]).to::<Vec<i64>>() };
+        assert_eq!(res, Some([12, 34].into()));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_deref_return failed");
+    }
+
+    ok
+}
+
+#[derive(NativeClass)]
+#[inherit(Reference)]
+struct RenameMethod(i64);
+
+#[methods]
+impl RenameMethod {
+    fn new(_owner: &Reference) -> Self {
+        Self(54)
+    }
+
+    #[export(name = "ask")]
+    fn answer(&self, _owner: &Reference) -> i64 {
+        self.0
+    }
+}
+
+fn test_derive_nativeclass_rename_method() -> bool {
+    println!(" -- test_derive_nativeclass_rename_method");
+
+    let ok = std::panic::catch_unwind(|| {
+        let thing = Instance::<RenameMethod, _>::new();
+        let base = thing.into_base();
+        assert_eq!(unsafe { base.call("ask", &[]).to::<i64>() }, Some(54));
+    })
+    .is_ok();
+
+    if !ok {
+        godot_error!("   !! Test test_derive_nativeclass_rename_method failed");
     }
 
     ok
