@@ -52,14 +52,6 @@ unsafe fn check_api_compatibility(
             next,
         } = *api;
 
-        // Godot 4 is not yet supported
-        if type_ as crate::sys::GDNATIVE_API_TYPES == crate::sys::GDNATIVE_API_TYPES_GDNATIVE_CORE
-            && version.major == 1
-            && version.minor == 3
-        {
-            return Err(sys::InitError::Generic{ message: "GodotEngine v4.* is not yet supported. See https://github.com/godot-rust/godot-rust/issues/396".into() });
-        }
-
         api = next;
         if api.is_null() {
             break;
